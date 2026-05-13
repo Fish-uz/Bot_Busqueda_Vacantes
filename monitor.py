@@ -9,14 +9,20 @@ from client_telegram import client
 from config import GRUPOS_RELEVANTES, logger
 from utils import Log, generar_hash_mensaje, es_mensaje_repetido
 from cerebro import analizar_vacante
+import platform
 
 # =================================================================
 # CONFIGURACIÓN DE LOGS ESPECÍFICOS PARA EL MONITOR
 # =================================================================
 
-# Configuración de la ruta del ejecutable de Tesseract (Motor OCR)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
+# --- DETECCIÓN AUTOMÁTICA DE TESSERACT ---
+if platform.system() == "Windows":
+    # Ruta para tu PC local
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+else:
+    # Ruta para Docker / Servidores Linux
+    pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+    
 # Almacenamiento volátil para evitar llamadas excesivas a la API de Telegram por metadatos
 cache_nombres_grupos = {}
 
