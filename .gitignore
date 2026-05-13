@@ -1,0 +1,13 @@
+# Entorno virtual
+venv/
+__pycache__/
+
+# Credenciales y Sesión (CRÍTICO)
+.env
+*.session
+*.session-journal
+
+# Archivos de datos y logs
+*.log
+hashes_procesados.txt
+prueba.jpg
