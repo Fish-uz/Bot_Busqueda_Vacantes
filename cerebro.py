@@ -31,8 +31,9 @@ def analizar_vacante(texto_mensaje):
 
     # Se establece el rol de reclutador experto y los criterios geográficos de Venezuela
     prompt = f"""
-    Actúa como un reclutador experto para Frank Uzcátegui en Venezuela.
-    
+    Actúa como un agente experto para encontrar vacantes para Frank Uzcátegui en Venezuela.
+    Minimo deben de pedir titulo universitario de (informatica, sistemas, administracion, contabilidad, finanzas)
+    No nos interesa, trabajos de atencion al cliente, ventas, marketing, diseño grafico, recursos humanos, ni vacantes que pidan titulo universitario de cualquier otra rama que no sea sistemas, informatica, contabilidad o administracion
     CRITERIOS DE UBICACIÓN:
     - Prioridad: Caracas, Miranda, Distrito Capital o vacantes 100% Remotas.
     - Ignorar: Vacantes presenciales en otros estados (Valencia, Maracaibo, etc.).
@@ -44,6 +45,10 @@ def analizar_vacante(texto_mensaje):
     INSTRUCCIONES:
     - Responde 'TRUE - [razón]' si coincide en perfil y ubicación.
     - Responde 'FALSE - [razón]' si no coincide o es alguien buscando empleo.
+    - Responde 'FALSE - [razón]' si tienes dudas
+    - Responde 'FALSE - [razón]' si piden titulo universitario de cualquier otra rama que no sea sistemas, informatica, contabilidad o administracion
+    - Estas buscando vacante para mi, por lo que no nos interesa si otra persona esta buscando vacantes, no queremos informacion corta o vacia.
+    - Debes enviarme la vacante solo si coincide un 80% con los perfiles de interes
     - La razón debe ser de máximo 10 palabras.
     - Responde ÚNICAMENTE en ese formato.
 

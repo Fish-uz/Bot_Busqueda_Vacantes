@@ -60,6 +60,16 @@ async def manejador_de_vacantes(event):
         try:
             # Conversión de imagen a texto mediante OCR local
             texto_final = pytesseract.image_to_string(Image.open(path))
+
+            # 2. LOG DEL OCR
+            with open("Log_ocr.txt", "a", encoding="utf-8") as f:
+                f.write(f"\n{'='*50}\n")
+                f.write(f"FECHA: {fecha_hora}\n")
+                f.write(f"GRUPO: {nombre_grupo}\n")
+                f.write(f"TEXTO EXTRAÍDO:\n\n{texto_final}\n")
+                f.write(f"{'='*50}\n")
+            Log.info(f"Texto de imagen guardado en Log_ocr.txt")
+
         except Exception as e:
             Log.error(f"Error al leer imagen: {e}")
         finally:
