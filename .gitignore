@@ -11,3 +11,4 @@ __pycache__/
 *.log
 hashes_procesados.txt
 prueba.jpg
+generador.py
