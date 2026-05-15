@@ -12,3 +12,4 @@ __pycache__/
 hashes_procesados.txt
 prueba.jpg
 generador.py
+temp_images/

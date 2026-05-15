@@ -11,6 +11,11 @@ from utils import Log, generar_hash_mensaje, es_mensaje_repetido
 from cerebro import analizar_vacante
 import platform
 
+# Carpeta para imágenes temporales
+TEMP_DIR = "temp_images"
+if not os.path.exists(TEMP_DIR):
+    os.makedirs(TEMP_DIR)
+
 # =================================================================
 # CONFIGURACIÓN DE LOGS ESPECÍFICOS PARA EL MONITOR
 # =================================================================
@@ -56,25 +61,33 @@ async def manejador_de_vacantes(event):
     # -------------------------------------------------------------
     if event.photo:
         Log.info(f"📸 Imagen detectada en {nombre_grupo}. Extrayendo texto...")
-        path = await event.download_media() # Descarga temporal de la imagen
+        
+        # CAMBIO: Ahora se guarda dentro de la carpeta temp_images con un nombre único
+        nombre_archivo = f"img_{event.message.id}.jpg"
+        path = os.path.join(TEMP_DIR, nombre_archivo)
+        
+        path = await event.download_media(file=path) # Descarga en la carpeta específica
+        
         try:
             # Conversión de imagen a texto mediante OCR local
             texto_final = pytesseract.image_to_string(Image.open(path))
 
-            # 2. LOG DEL OCR
-            with open("Log_ocr.txt", "a", encoding="utf-8") as f:
+            if os.path.exists("log_ocr.txt") and os.path.getsize("log_ocr.txt") > (30 * 1024 * 1024):
+                os.remove("log_ocr.txt") 
+
+            with open("log_ocr.txt", "a", encoding="utf-8") as f:
                 f.write(f"\n{'='*50}\n")
                 f.write(f"FECHA: {fecha_hora}\n")
                 f.write(f"GRUPO: {nombre_grupo}\n")
                 f.write(f"TEXTO EXTRAÍDO:\n\n{texto_final}\n")
                 f.write(f"{'='*50}\n")
-            Log.info(f"Texto de imagen guardado en Log_ocr.txt")
+            Log.info(f"Texto de imagen guardado en log_ocr.txt")
 
         except Exception as e:
             Log.error(f"Error al leer imagen: {e}")
         finally:
-            # Garantiza la eliminación del archivo para evitar consumo de disco
-            if os.path.exists(path):
+            # Garantiza la eliminación del archivo dentro de la carpeta temp_images
+            if path and os.path.exists(path):
                 os.remove(path)
                 Log.info(f"Archivo temporal {path} eliminado.")
     else:

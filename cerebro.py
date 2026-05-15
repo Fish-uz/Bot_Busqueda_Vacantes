@@ -31,29 +31,29 @@ def analizar_vacante(texto_mensaje):
 
     # Se establece el rol de reclutador experto y los criterios geográficos de Venezuela
     prompt = f"""
-    Actúa como un agente experto para encontrar vacantes para Frank Uzcátegui en Venezuela.
-    Minimo deben de pedir titulo universitario de (informatica, sistemas, administracion, contabilidad, finanzas)
-    No nos interesa, trabajos de atencion al cliente, ventas, marketing, diseño grafico, recursos humanos, ni vacantes que pidan titulo universitario de cualquier otra rama que no sea sistemas, informatica, contabilidad o administracion
-    CRITERIOS DE UBICACIÓN:
-    - Prioridad: Caracas, Miranda, Distrito Capital o vacantes 100% Remotas.
-    - Ignorar: Vacantes presenciales en otros estados (Valencia, Maracaibo, etc.).
+    Eres un Filtro de Reclutamiento de alta precisión para Frank Uzcátegui (Venezuela).
+    Tu misión es descartar el 99% de los mensajes y solo aceptar vacantes reales que cumplan estrictamente:
 
-    PERFILES DE INTERÉS:
-    1. TECNOLOGÍA: {perfil_it}
-    2. ADMINISTRATIVO: {perfil_admin}
+    REGLAS DE ORO (Si no se cumple, responde FALSE):
+    1. UBICACIÓN: Solo Caracas, Miranda, Distrito Capital o 100% Remoto. 
+       - DESCARTA: Valencia, Maracaibo, Aragua o cualquier otro estado.
+    2. TÍTULO REQUERIDO: Debe mencionar explícitamente: Sistemas, Informática, Computación, Administración, Banca, Medios de Pagos, Contabilidad o Finanzas.
+       - DESCARTA: Médicos, Enfermeros, Abogados, Educación, Ventas puras.
+    3. ROL PROHIBIDO: No aceptes: Ventas, Marketing, Diseño, RRHH, Atención al Cliente, Visitador Médico, Cajeros, Operarios.
+    4. NO BUSCADORES: Si el texto es de alguien BUSCANDO empleo, responde FALSE. Solo buscamos EMPRESAS contratando.
 
-    INSTRUCCIONES:
-    - Responde 'TRUE - [razón]' si coincide en perfil y ubicación.
-    - Responde 'FALSE - [razón]' si no coincide o es alguien buscando empleo.
-    - Responde 'FALSE - [razón]' si tienes dudas
-    - Responde 'FALSE - [razón]' si piden titulo universitario de cualquier otra rama que no sea sistemas, informatica, contabilidad o administracion
-    - Estas buscando vacante para mi, por lo que no nos interesa si otra persona esta buscando vacantes, no queremos informacion corta o vacia.
-    - Debes enviarme la vacante solo si coincide un 80% con los perfiles de interes
-    - La razón debe ser de máximo 10 palabras.
-    - Responde ÚNICAMENTE en ese formato.
+    PERFILES DE REFERENCIA PARA MATCH (Mínimo 80%):
+    - IT: {perfil_it}
+    - ADMIN/CONTABLE: {perfil_admin}
 
     MENSAJE A ANALIZAR:
     "{texto_mensaje}"
+
+    FORMATO DE RESPUESTA (ESTRICTO):
+    - Si cumple TODO: TRUE - [razón corta de por qué cumple]
+    - Si falla en ALGO o es SPAM: FALSE - [razón de 1 a 12 palabras del descarte]
+    
+    INSTRUCCIÓN FINAL: Si tienes la más mínima duda o la información está incompleta, responde FALSE. No adivines.
     """
 
     try:
