@@ -72,7 +72,8 @@ async def manejador_de_vacantes(event):
             # Conversión de imagen a texto mediante OCR local
             texto_final = pytesseract.image_to_string(Image.open(path))
 
-            if os.path.exists("log_ocr.txt") and os.path.getsize("log_ocr.txt") > (30 * 1024 * 1024):
+            # Control de peso estricto para imágenes (100 MB)
+            if os.path.exists("log_ocr.txt") and os.path.getsize("log_ocr.txt") > (100 * 1024 * 1024):
                 os.remove("log_ocr.txt") 
 
             with open("log_ocr.txt", "a", encoding="utf-8") as f:
@@ -93,6 +94,18 @@ async def manejador_de_vacantes(event):
     else:
         # Extracción directa de texto si no es un archivo de imagen
         texto_final = event.raw_text
+        
+        # Control de peso estricto para texto plano (100 MB) antes de escribirlo
+        if os.path.exists("log_ocr.txt") and os.path.getsize("log_ocr.txt") > (100 * 1024 * 1024):
+            os.remove("log_ocr.txt")
+            
+        with open("log_ocr.txt", "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*50}\n")
+            f.write(f"FECHA: {fecha_hora}\n")
+            f.write(f"GRUPO: {nombre_grupo}\n")
+            f.write(f"TEXTO EXTRAÍDO:\n\n{texto_final}\n")
+            f.write(f"{'='*50}\n")
+        Log.info(f"Texto plano guardado en log_ocr.txt")
 
     Log.info(f"[ OK ] Contenido capturado en {nombre_grupo} ({chat_id})")
 

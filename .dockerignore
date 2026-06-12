@@ -1,9 +1,0 @@
-venv/
-__pycache__/
-*.log
-.env
-*.session
-*.session-journal
-hashes_procesados.txt
-.git/
-generador.py

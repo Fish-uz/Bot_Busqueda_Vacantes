@@ -36,11 +36,13 @@ def analizar_vacante(texto_mensaje):
 
     REGLAS DE ORO (Si no se cumple, responde FALSE):
     1. UBICACIÓN: Solo Caracas, Miranda, Distrito Capital o 100% Remoto. 
-       - DESCARTA: Valencia, Maracaibo, Aragua o cualquier otro estado.
+       - DESCARTA: Valencia, Maracaibo, Aragua o cualquier otro estado. Tambien ubicaciones como: Charallave, Santa Teresa del Tuy, Valles del Tuy.
     2. TÍTULO REQUERIDO: Debe mencionar explícitamente: Sistemas, Informática, Computación, Administración, Banca, Medios de Pagos, Contabilidad o Finanzas.
-       - DESCARTA: Médicos, Enfermeros, Abogados, Educación, Ventas puras.
+       - DESCARTA: Médicos, Enfermeros, Abogados, Educación, Vendedor, Ventas puras.
     3. ROL PROHIBIDO: No aceptes: Ventas, Marketing, Diseño, RRHH, Atención al Cliente, Visitador Médico, Cajeros, Operarios.
     4. NO BUSCADORES: Si el texto es de alguien BUSCANDO empleo, responde FALSE. Solo buscamos EMPRESAS contratando.
+    5. Responder FALSE los siguientes Perfiles: "Talento Humano", "Recursos Humanos", "Gestion del Talento", "Vendedor",
+    6. Responder FALSE cuando esten ofreciendo servicios
 
     PERFILES DE REFERENCIA PARA MATCH (Mínimo 80%):
     - IT: {perfil_it}
