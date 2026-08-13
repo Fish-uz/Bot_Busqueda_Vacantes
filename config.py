@@ -34,7 +34,7 @@ logger = logging.getLogger("BotVacantes")
 API_ID = os.getenv("TELEGRAM_API_ID")
 API_HASH = os.getenv("TELEGRAM_API_HASH")
 GROQ_KEY = os.getenv("GROQ_API_KEY")
-
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 logger.info("Configuración cargada exitosamente.")
 
 # -----------------------------------------------------------------

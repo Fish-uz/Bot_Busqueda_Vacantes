@@ -1,6 +1,7 @@
 import asyncio
 from client_telegram import conectar_telegram, client
 from monitor import iniciar_monitor
+from database import inicializar_db
 from utils import Log
 
 # =================================================================
@@ -11,7 +12,10 @@ async def main():
     Coordina la inicialización de la aplicación, estableciendo la 
     conexión con Telegram y activando el bucle de monitoreo.
     """
-    Log.info("--- APP DE VACANTES INICIADA ---")
+    Log.info("--- INICIANDO SISTEMA DE VACANTES ---")
+    
+    # 0. Inicializar base de datos
+    inicializar_db()
     
     # 1. Establecer conexión inicial con el cliente de Telegram
     await conectar_telegram()

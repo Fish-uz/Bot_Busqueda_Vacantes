@@ -1,89 +1,76 @@
 import re
+import google.generativeai as genai
 from groq import Groq
-from config import GROQ_KEY
+from config import GROQ_KEY, GEMINI_KEY
 from utils import Log
 
 # =================================================================
-# CONFIGURACIÓN DE CLIENTE
+# CONFIGURACIÓN DE CLIENTES (Multimodal)
 # =================================================================
-# Inicializamos el cliente de Groq utilizando la API KEY definida en config
-client = Groq(api_key=GROQ_KEY)
+# Groq para velocidad (Llama 3.1)
+groq_client = Groq(api_key=GROQ_KEY)
 
-def analizar_vacante(texto_mensaje):
-    """
-    Usa la IA de Groq para determinar si el mensaje es una vacante relevante.
-    Analiza el contenido del mensaje frente a perfiles técnicos y administrativos.
-    """
-    
-    # -------------------------------------------------------------
-    # DEFINICIÓN DE PERFILES DE EXPERIENCIA (Contexto para la IA)
-    # -------------------------------------------------------------
+# Gemini como Fallback (Respaldo)
+genai.configure(api_key=GEMINI_KEY)
+gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 
-    # Perfil orientado a desarrollo backend y automatización
-    perfil_it = "Backend Developer (Python, Django, Flask, FastAPI), Especialista en Automatización (n8n, IA Generativa, SQL), Junior IT, Consultor Odoo."
-    
-    # Perfil orientado a gestión financiera y procesos administrativos en sector Fintech
-    perfil_admin = "Analista de Operaciones Fintech, Medios de Pago, Puntos de venta, Analista Contable, Cuentas por Pagar, Analista de Finanzas, Conciliación Bancaria (AS400, CRM, Profit)."
-    
-    # -------------------------------------------------------------
-    # CONSTRUCCIÓN DEL PROMPT (Instrucciones de reclutamiento)
-    # -------------------------------------------------------------
+PERFIL_IT = "Backend Developer (Python, Django, Flask, FastAPI), Especialista en Automatización (n8n, IA Generativa, SQL), Junior IT, Consultor Odoo."
+PERFIL_ADMIN = "Analista de Operaciones Fintech, Medios de Pago, Puntos de venta, Analista Contable, Cuentas por Pagar, Analista de Finanzas, Conciliación Bancaria (AS400, CRM, Profit)."
 
-    # Se establece el rol de reclutador experto y los criterios geográficos de Venezuela
-    prompt = f"""
+def generar_prompt(texto_mensaje):
+    return f"""
     Eres un Filtro de Reclutamiento de alta precisión para Frank Uzcátegui (Venezuela).
     Tu misión es descartar el 99% de los mensajes y solo aceptar vacantes reales que cumplan estrictamente:
 
-    REGLAS DE ORO (Si no se cumple, responde FALSE):
-    1. UBICACIÓN: Solo Caracas, Miranda, Distrito Capital o 100% Remoto. 
-       - DESCARTA: Valencia, Maracaibo, Aragua o cualquier otro estado. Tambien ubicaciones como: Charallave, Santa Teresa del Tuy, Valles del Tuy.
-    2. TÍTULO REQUERIDO: Debe mencionar explícitamente: Sistemas, Informática, Computación, Administración, Banca, Medios de Pagos, Contabilidad o Finanzas.
-       - DESCARTA: Médicos, Enfermeros, Abogados, Educación, Vendedor, Ventas puras.
-    3. ROL PROHIBIDO: No aceptes: Ventas, Marketing, Diseño, RRHH, Atención al Cliente, Visitador Médico, Cajeros, Operarios.
-    4. NO BUSCADORES: Si el texto es de alguien BUSCANDO empleo, responde FALSE. Solo buscamos EMPRESAS contratando.
-    5. Responder FALSE los siguientes Perfiles: "Talento Humano", "Recursos Humanos", "Gestion del Talento", "Vendedor",
-    6. Responder FALSE cuando esten ofreciendo servicios
+    REGLAS DE ORO:
+    1. UBICACIÓN: Solo Caracas, Miranda, Distrito Capital o 100% Remoto. DESCARTA: Valencia, Maracaibo, Aragua, Valles del Tuy.
+    2. TÍTULO: Sistemas, Informática, Computación, Administración, Banca, Medios de Pagos, Contabilidad o Finanzas.
+    3. ROL PROHIBIDO: Ventas, Marketing, Diseño, RRHH, Atención al Cliente, Visitador Médico, Cajeros, Operarios.
+    4. NO BUSCADORES: Solo EMPRESAS contratando.
+    5. NO SERVICIOS: Responder FALSE si ofrecen servicios.
 
-    PERFILES DE REFERENCIA PARA MATCH (Mínimo 80%):
-    - IT: {perfil_it}
-    - ADMIN/CONTABLE: {perfil_admin}
+    MATCH PERFILES:
+    - IT: {PERFIL_IT}
+    - ADMIN/CONTABLE: {PERFIL_ADMIN}
 
-    MENSAJE A ANALIZAR:
-    "{texto_mensaje}"
+    MENSAJE: "{texto_mensaje}"
 
-    FORMATO DE RESPUESTA (ESTRICTO):
-    - Si cumple TODO: TRUE - [razón corta de por qué cumple]
-    - Si falla en ALGO o es SPAM: FALSE - [razón de 1 a 12 palabras del descarte]
-    
-    INSTRUCCIÓN FINAL: Si tienes la más mínima duda o la información está incompleta, responde FALSE. No adivines.
+    RESPONDE SOLO EN ESTE FORMATO:
+    DECISION: [TRUE/FALSE]
+    MOTIVO: [Breve explicación]
     """
 
+def analizar_vacante(texto_mensaje):
+    """
+    Intenta analizar con Groq. Si falla, usa Gemini como respaldo.
+    """
+    prompt = generar_prompt(texto_mensaje)
+
+    # --- INTENTO 1: GROQ ---
     try:
-        Log.info("IA (Groq) analizando relevancia...")
-        
-        # -------------------------------------------------------------
-        # LLAMADA A LA API DE GROQ
-        # -------------------------------------------------------------
-        
-        # Usamos el modelo Llama 3.1 8B por su alta velocidad y eficiencia en texto
-        completion = client.chat.completions.create(
+        Log.info("IA (Groq) analizando...")
+        completion = groq_client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
         )
-
-        # Limpiamos la respuesta para facilitar la validación
         resultado = completion.choices[0].message.content.strip().upper()
-        Log.info(f"Decisión IA: {resultado}")
+        return _validar_resultado(resultado, "Groq")
 
-        # -------------------------------------------------------------
-        # VALIDACIÓN DE RESULTADO (Lógica Booleana)
-        # -------------------------------------------------------------
-        # Usamos expresiones regulares para confirmar la presencia de 'TRUE' como palabra exacta
-        if re.search(r"\bTRUE\b", resultado):
-            return True
-        return False
-    
     except Exception as e:
-        # Captura de errores de conexión o límites de API
-        Log.error(f"Error en Cerebro Groq: {e}")
-        return False
+        Log.alerta(f"Groq falló: {e}. Intentando con Gemini (Fallback)...")
+        
+        # --- INTENTO 2: GEMINI (FALLBACK) ---
+        try:
+            response = gemini_model.generate_content(prompt)
+            resultado = response.text.strip().upper()
+            return _validar_resultado(resultado, "Gemini")
+        except Exception as e_gemini:
+            Log.error(f"Error crítico: Ambos motores de IA fallaron. {e_gemini}")
+            return False
+
+def _validar_resultado(resultado, motor):
+    """Lógica común para interpretar la respuesta de cualquier IA."""
+    Log.info(f"Decisión {motor}: {resultado}")
+    if "DECISION: TRUE" in resultado or "DECISION:TRUE" in resultado:
+        return True
+    return False
