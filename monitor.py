@@ -1,142 +1,101 @@
 import os
 import asyncio
-import logging
 from datetime import datetime
-import pytesseract
-from PIL import Image
 from telethon import events
 from client_telegram import client
 from config import GRUPOS_RELEVANTES, logger
-from utils import Log, generar_hash_mensaje, es_mensaje_repetido
+from utils import Log, generar_hash_mensaje
 from cerebro import analizar_vacante
-import platform
+from ocr_engine import extraer_texto_de_imagen
+from database import existe_hash, guardar_hash
 
 # Carpeta para imágenes temporales
 TEMP_DIR = "temp_images"
 if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
 
-# =================================================================
-# CONFIGURACIÓN DE LOGS ESPECÍFICOS PARA EL MONITOR
-# =================================================================
-
-# --- DETECCIÓN AUTOMÁTICA DE TESSERACT ---
-if platform.system() == "Windows":
-    # Ruta para tu PC local
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-else:
-    # Ruta para Docker / Servidores Linux
-    pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
-    
-# Almacenamiento volátil para evitar llamadas excesivas a la API de Telegram por metadatos
+# Almacenamiento volátil para evitar llamadas excesivas a la API de Telegram
 cache_nombres_grupos = {}
 
-# =================================================================
-# MANEJADOR DE EVENTOS DE NUEVOS MENSAJES
-# =================================================================
 @client.on(events.NewMessage(chats=GRUPOS_RELEVANTES))
 async def manejador_de_vacantes(event):
     """
-    Función principal que procesa cada mensaje entrante de los grupos monitoreados.
-    Gestiona la extracción de texto (OCR si es imagen), el filtrado anti-spam y la IA.
+    Procesa mensajes entrantes, aplica OCR si es necesario, 
+    filtra duplicados con DB y analiza con IA.
     """
     chat_id = event.chat_id
     fecha_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-    # Identificación del nombre del grupo (Uso de caché para optimizar rendimiento)
+    # 1. Identificación del Grupo
     if chat_id not in cache_nombres_grupos:
         chat = await event.get_chat()
-        nombre = getattr(chat, 'title', 'Desconocido')
-        cache_nombres_grupos[chat_id] = nombre
+        cache_nombres_grupos[chat_id] = getattr(chat, 'title', 'Desconocido')
     
     nombre_grupo = cache_nombres_grupos[chat_id]
-
-    # --- TUS LOGS ORIGINALES ---
-    Log.info(f"Mensaje recibido de: {nombre_grupo} (ID: {chat_id}) ({fecha_hora})")
+    Log.info(f"Nuevo mensaje en [{nombre_grupo}]")
     
     texto_final = ""
 
-    # -------------------------------------------------------------
-    # PROCESAMIENTO DE CONTENIDO MULTIMEDIA (OCR)
-    # -------------------------------------------------------------
+    # 2. Procesamiento de Contenido (Texto o Imagen)
     if event.photo:
-        Log.info(f"📸 Imagen detectada en {nombre_grupo}. Extrayendo texto...")
-        
-        # CAMBIO: Ahora se guarda dentro de la carpeta temp_images con un nombre único
+        Log.ocr(f"📸 Detectada imagen. Procesando OCR...")
         nombre_archivo = f"img_{event.message.id}.jpg"
         path = os.path.join(TEMP_DIR, nombre_archivo)
         
-        path = await event.download_media(file=path) # Descarga en la carpeta específica
-        
         try:
-            # Conversión de imagen a texto mediante OCR local
-            texto_final = pytesseract.image_to_string(Image.open(path))
-
-            # Control de peso estricto para imágenes (100 MB)
-            if os.path.exists("log_ocr.txt") and os.path.getsize("log_ocr.txt") > (100 * 1024 * 1024):
-                os.remove("log_ocr.txt") 
-
-            with open("log_ocr.txt", "a", encoding="utf-8") as f:
-                f.write(f"\n{'='*50}\n")
-                f.write(f"FECHA: {fecha_hora}\n")
-                f.write(f"GRUPO: {nombre_grupo}\n")
-                f.write(f"TEXTO EXTRAÍDO:\n\n{texto_final}\n")
-                f.write(f"{'='*50}\n")
-            Log.info(f"Texto de imagen guardado en log_ocr.txt")
-
+            path = await event.download_media(file=path)
+            texto_final = extraer_texto_de_imagen(path)
         except Exception as e:
-            Log.error(f"Error al leer imagen: {e}")
+            Log.error(f"Error descargando imagen: {e}")
         finally:
-            # Garantiza la eliminación del archivo dentro de la carpeta temp_images
             if path and os.path.exists(path):
                 os.remove(path)
-                Log.info(f"Archivo temporal {path} eliminado.")
     else:
-        # Extracción directa de texto si no es un archivo de imagen
         texto_final = event.raw_text
-        
-        # Control de peso estricto para texto plano (100 MB) antes de escribirlo
+
+    # 3. Validación de Contenido Vacío
+    if not texto_final or not texto_final.strip():
+        return
+
+    # 4. Registro en Log de OCR/Texto (Para auditoría)
+    _registrar_en_archivo(nombre_grupo, fecha_hora, texto_final)
+
+    # 5. Sistema Anti-Spam (Base de Datos)
+    hash_msg = generar_hash_mensaje(texto_final)
+    if existe_hash(hash_msg):
+        Log.alerta(f"Mensaje ignorado: Ya procesado (Anti-Spam).")
+        return
+
+    # Guardamos el hash de inmediato para evitar procesamientos paralelos del mismo msj
+    guardar_hash(hash_msg)
+
+    # 6. Análisis con IA (Groq/Gemini Fallback)
+    await asyncio.sleep(1) # Pausa técnica
+    es_relevante = analizar_vacante(texto_final)
+    
+    if es_relevante:
+        Log.exito("¡MATCH! Vacante relevante encontrada. Reenviando...")
+        await event.forward_to('me') 
+    else:
+        Log.alerta("Descartado por la IA.")
+
+def _registrar_en_archivo(grupo, fecha, texto):
+    """Maneja la escritura en el archivo de registro histórico."""
+    try:
+        # Control de peso (100 MB)
         if os.path.exists("log_ocr.txt") and os.path.getsize("log_ocr.txt") > (100 * 1024 * 1024):
-            os.remove("log_ocr.txt")
-            
+            os.remove("log_ocr.txt") 
+
+        separador = "="*60
         with open("log_ocr.txt", "a", encoding="utf-8") as f:
-            f.write(f"\n{'='*50}\n")
-            f.write(f"FECHA: {fecha_hora}\n")
-            f.write(f"GRUPO: {nombre_grupo}\n")
-            f.write(f"TEXTO EXTRAÍDO:\n\n{texto_final}\n")
-            f.write(f"{'='*50}\n")
-        Log.info(f"Texto plano guardado en log_ocr.txt")
+            f.write(f"\n{separador}\n")
+            f.write(f"FECHA: {fecha} | GRUPO: {grupo}\n")
+            f.write(f"CONTENIDO:\n{texto.strip()}\n")
+            f.write(f"{separador}\n")
+    except Exception as e:
+        Log.error(f"No se pudo escribir en log_ocr.txt: {e}")
 
-    Log.info(f"[ OK ] Contenido capturado en {nombre_grupo} ({chat_id})")
-
-    # -------------------------------------------------------------
-    # LÓGICA DE FILTRADO Y ANÁLISIS
-    # -------------------------------------------------------------
-    if texto_final.strip():
-        # 1. Sistema Anti-Spam basado en Hashing (Persistencia Mensual)
-        hash_msg = generar_hash_mensaje(texto_final)
-        if es_mensaje_repetido(hash_msg):
-            Log.alerta(f"Mensaje omitido: Ya fue procesado anteriormente (Anti-Spam).")
-            return # Finaliza el proceso para este mensaje
-
-        # Pequeña pausa de cortesía para el flujo asíncrono
-        await asyncio.sleep(2)
-
-        # 2. Análisis Semántico mediante el Cerebro (IA Groq)
-        es_relevante = analizar_vacante(texto_final)
-        
-        # 3. Acción de Reenvío
-        if es_relevante:
-            Log.exito("¡ESTA VACANTE ES PARA TI! Reenviando...")
-            # Reenvía el mensaje original a "Mensajes Guardados" (me)
-            await event.forward_to('me') 
-        else:
-            Log.alerta("Mensaje descartado por la IA (No relevante).")
-
-# =================================================================
-# INICIO DEL SERVICIO DE MONITOREO
-# =================================================================
 async def iniciar_monitor():
     """Mantiene el cliente de Telegram en escucha activa permanente."""
-    Log.info("Iniciando modo vigilancia. Presiona Ctrl+C para detener.")
+    Log.info("SISTEMA DE VIGILANCIA ACTIVADO. Escuchando...")
     await client.run_until_disconnected()
