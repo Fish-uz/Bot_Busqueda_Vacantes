@@ -1,8 +1,10 @@
 import asyncio
-from client_telegram import conectar_telegram, client
+from contextlib import suppress
+from client_telegram import conectar_telegram
 from monitor import iniciar_monitor
 from database import inicializar_db
-from utils import Log
+from config import SCRAPING_ENABLED, logger, validar_configuracion
+from scrapings.runner import bucle_scrapings
 
 # =================================================================
 # FUNCIÓN DE ARRANQUE PRINCIPAL
@@ -12,17 +14,28 @@ async def main():
     Coordina la inicialización de la aplicación, estableciendo la 
     conexión con Telegram y activando el bucle de monitoreo.
     """
-    Log.info("--- INICIANDO SISTEMA DE VACANTES ---")
+    logger.info("--- INICIANDO SISTEMA DE VACANTES ---")
+
+    errores = validar_configuracion()
+    if errores:
+        raise RuntimeError("Configuración inválida: " + "; ".join(errores))
     
-    # 0. Inicializar base de datos
     inicializar_db()
-    
-    # 1. Establecer conexión inicial con el cliente de Telegram
-    await conectar_telegram()
-    
-    # 2. Iniciar el servicio de escucha activa en los grupos definidos
-    # Este proceso se mantiene en ejecución hasta que sea interrumpido
-    await iniciar_monitor()
+    client = await conectar_telegram()
+    tarea_scrapings = None
+    try:
+        if SCRAPING_ENABLED:
+            tarea_scrapings = asyncio.create_task(
+                bucle_scrapings(client), name="scrapings"
+            )
+        await iniciar_monitor(client)
+    finally:
+        if tarea_scrapings:
+            tarea_scrapings.cancel()
+            with suppress(asyncio.CancelledError):
+                await tarea_scrapings
+        if client.is_connected():
+            await client.disconnect()
 
 # =================================================================
 # PUNTO DE ENTRADA DEL SISTEMA
@@ -33,4 +46,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         # Manejo controlado de la salida (Ctrl+C)
-        Log.alerta("Bot apagado manualmente.")
+        logger.warning("Bot apagado manualmente.")

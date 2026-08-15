@@ -1,71 +1,86 @@
 import sqlite3
-import os
 from datetime import datetime
-from utils import Log
 
-DB_NAME = "vacantes_data.db"
+from config import DB_PATH, logger
+
 
 def obtener_conexion():
-    """Establece conexión con la base de datos SQLite."""
-    return sqlite3.connect(DB_NAME)
+    conexion = sqlite3.connect(DB_PATH, timeout=10)
+    conexion.execute("PRAGMA busy_timeout = 10000")
+    return conexion
+
 
 def inicializar_db():
-    """
-    Crea las tablas necesarias y gestiona la limpieza mensual.
-    """
     mes_actual = datetime.now().strftime("%Y-%m")
-    conn = obtener_conexion()
-    cursor = conn.cursor()
+    with obtener_conexion() as conn:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS sistema (clave TEXT PRIMARY KEY, valor TEXT)"
+        )
+        resultado = conn.execute(
+            "SELECT valor FROM sistema WHERE clave = 'mes_registro'"
+        ).fetchone()
+        if resultado and resultado[0] != mes_actual:
+            logger.warning("Nuevo mes: se reinicia el historial anti-duplicados")
+            conn.execute("DROP TABLE IF EXISTS hashes")
+        conn.execute(
+            "INSERT OR REPLACE INTO sistema (clave, valor) VALUES ('mes_registro', ?)",
+            (mes_actual,),
+        )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS hashes (
+                   hash_msg TEXT PRIMARY KEY,
+                   fecha TEXT NOT NULL,
+                   estado TEXT NOT NULL DEFAULT 'procesado'
+               )"""
+        )
+        columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(hashes)")}
+        if "estado" not in columnas:
+            conn.execute(
+                "ALTER TABLE hashes ADD COLUMN estado TEXT NOT NULL DEFAULT 'procesado'"
+            )
 
-    # Tabla para metadatos (para rastrear el mes actual)
-    cursor.execute('''CREATE TABLE IF NOT EXISTS sistema (
-                        clave TEXT PRIMARY KEY,
-                        valor TEXT)''')
 
-    # Verificar el mes guardado
-    cursor.execute("SELECT valor FROM sistema WHERE clave = 'mes_registro'")
-    resultado = cursor.fetchone()
+def reservar_hash(hash_texto):
+    """Reserva atómicamente un mensaje nuevo o uno que terminó con error."""
+    fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with obtener_conexion() as conn:
+            cursor = conn.execute(
+                """INSERT INTO hashes (hash_msg, fecha, estado)
+                   VALUES (?, ?, 'pendiente')
+                   ON CONFLICT(hash_msg) DO UPDATE SET
+                       fecha = excluded.fecha,
+                       estado = 'pendiente'
+                   WHERE hashes.estado = 'error'""",
+                (hash_texto, fecha),
+            )
+            return cursor.rowcount == 1
+    except sqlite3.Error:
+        logger.exception("No se pudo reservar el hash")
+        return False
 
-    if resultado is None:
-        # Primera ejecución
-        cursor.execute("INSERT INTO sistema (clave, valor) VALUES ('mes_registro', ?)", (mes_actual,))
-    elif resultado[0] != mes_actual:
-        # Cambio de mes detectado: Limpiar tabla de hashes
-        Log.alerta(f"Nuevo mes detectado ({mes_actual}). Limpiando base de datos de hashes...")
-        cursor.execute("DROP TABLE IF EXISTS hashes")
-        cursor.execute("UPDATE sistema SET valor = ? WHERE clave = 'mes_registro'", (mes_actual,))
 
-    # Tabla de hashes anti-spam
-    cursor.execute('''CREATE TABLE IF NOT EXISTS hashes (
-                        hash_msg TEXT PRIMARY KEY,
-                        fecha TEXT)''')
-    
-    conn.commit()
-    conn.close()
+def marcar_hash(hash_texto, estado):
+    if estado not in {"procesado", "error"}:
+        raise ValueError(f"Estado de hash inválido: {estado}")
+    with obtener_conexion() as conn:
+        conn.execute(
+            "UPDATE hashes SET estado = ?, fecha = ? WHERE hash_msg = ?",
+            (estado, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), hash_texto),
+        )
+
 
 def guardar_hash(hash_texto):
-    """Guarda un hash en la base de datos."""
-    try:
-        conn = obtener_conexion()
-        cursor = conn.cursor()
-        fecha_hoy = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cursor.execute("INSERT INTO hashes (hash_msg, fecha) VALUES (?, ?)", (hash_texto, fecha_hoy))
-        conn.commit()
-        conn.close()
-        return True
-    except sqlite3.IntegrityError:
-        # El hash ya existe
-        conn.close()
+    """Compatibilidad: reserva y marca inmediatamente como procesado."""
+    if not reservar_hash(hash_texto):
         return False
-    except Exception as e:
-        Log.error(f"Error en DB al guardar hash: {e}")
-        return False
+    marcar_hash(hash_texto, "procesado")
+    return True
+
 
 def existe_hash(hash_texto):
-    """Verifica si el hash ya existe."""
-    conn = obtener_conexion()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM hashes WHERE hash_msg = ?", (hash_texto,))
-    existe = cursor.fetchone() is not None
-    conn.close()
-    return existe
+    with obtener_conexion() as conn:
+        fila = conn.execute(
+            "SELECT estado FROM hashes WHERE hash_msg = ?", (hash_texto,)
+        ).fetchone()
+    return fila is not None and fila[0] != "error"

@@ -1,78 +1,53 @@
-from telethon import TelegramClient
-from utils import Log
-from config import API_ID, API_HASH, logger
+import asyncio
 
-# =================================================================
-# INICIALIZACIÓN DEL CLIENTE
-# =================================================================
-# Se crea la instancia de TelegramClient usando el archivo de sesión local
-# y las credenciales obtenidas desde el archivo de configuración.
-client = TelegramClient('sesion_frank', API_ID, API_HASH)
+from telethon import TelegramClient
+
+from config import API_HASH, API_ID, TELEGRAM_SESSION, logger, validar_configuracion
+
+
+_client = None
+
+
+def obtener_cliente():
+    """Construye el cliente solo después de validar su configuración."""
+    global _client
+    if _client is None:
+        errores = validar_configuracion(requerir_ia=False)
+        if errores:
+            raise RuntimeError("Configuración inválida: " + "; ".join(errores))
+        _client = TelegramClient(TELEGRAM_SESSION, API_ID, API_HASH)
+    return _client
+
 
 async def conectar_telegram():
-    """
-    Gestiona el proceso de autenticación y conexión con los servidores de Telegram.
-    Verifica si la sesión actual es válida y cuenta con autorización.
-    """
+    cliente = obtener_cliente()
     logger.info("Intentando conectar a Telegram...")
     try:
-        # Inicia el cliente (solicitará datos por consola si la sesión no existe)
-        await client.start()
-        
-        # Validación de estado de autorización del usuario
-        if await client.is_user_authorized():
-            logger.info("Conexión establecida y usuario autorizado.")
-        else:
-            logger.warning("Usuario no autorizado. Se requiere intervención manual.")
-    except Exception as e:
-        # Registro de errores críticos durante el handshake inicial
-        logger.error(f"Error fatal al conectar a Telegram: {e}", exc_info=True)
+        await cliente.start()
+        if not await cliente.is_user_authorized():
+            raise RuntimeError("Telegram requiere autorización manual")
+    except Exception:
+        logger.exception("No fue posible conectar a Telegram")
+        raise
+    logger.info("Conexión establecida y usuario autorizado.")
+    return cliente
 
-async def obtener_grupos():
-    """
-    Itera sobre los diálogos activos del usuario para extraer una lista
-    de grupos y canales disponibles.
-    """
-    logger.info("Iniciando escaneo de grupos y canales...")
-    grupos_interes = []
-    try:
-        # Itera de forma asíncrona sobre todos los diálogos abiertos
-        async for dialog in client.iter_dialogs():
-            # Filtramos únicamente entidades colectivas (Grupos y Canales)
-            if dialog.is_group or dialog.is_channel:
-                logger.debug(f"Encontrado: {dialog.name} (ID: {dialog.id})")
-                grupos_interes.append({"name": dialog.name, "id": dialog.id})
-        
-        logger.info(f"Escaneo finalizado. Se encontraron {len(grupos_interes)} grupos/canales.")
-        return grupos_interes
-    except Exception as e:
-        # Manejo de excepciones durante la iteración de diálogos
-        logger.error(f"Error al obtener la lista de grupos: {e}")
-        return []
+
+async def obtener_grupos(cliente=None):
+    cliente = cliente or obtener_cliente()
+    grupos = []
+    async for dialog in cliente.iter_dialogs():
+        if dialog.is_group or dialog.is_channel:
+            grupos.append({"name": dialog.name, "id": dialog.id})
+    return grupos
+
 
 async def main():
-    """
-    Función principal encargada de coordinar la conexión y la
-    visualización de los metadatos de los grupos.
-    """
-    # 1. Ejecución del proceso de conexión
-    await conectar_telegram()
-    
-    # 2. Extracción de metadatos de grupos y canales
-    grupos = await obtener_grupos()
-    
-    # 3. Presentación formateada de resultados en la terminal
-    print("\n" + "="*50)
-    print("LISTADO DE TUS GRUPOS Y CANALES:")
-    print("="*50)
-    for g in grupos:
-        print(f"NOMBRE: {g['name']} | ID: {g['id']}")
-    print("="*50 + "\n")
+    cliente = await conectar_telegram()
+    grupos = await obtener_grupos(cliente)
+    for grupo in grupos:
+        print(f"NOMBRE: {grupo['name']} | ID: {grupo['id']}")
 
-# =================================================================
-# PUNTO DE ENTRADA DEL SCRIPT
-# =================================================================
-# Disparador para la ejecución del bucle de eventos asíncrono
+
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())

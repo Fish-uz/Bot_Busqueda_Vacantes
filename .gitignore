@@ -2,6 +2,8 @@
 venv/
 __pycache__/
 .pytest_cache
+.coverage
+htmlcov/
 
 # Credenciales y Sesión (CRÍTICO)
 .env
@@ -10,11 +12,14 @@ __pycache__/
 
 # Archivos de datos y logs
 *.log
-Log_ocr.txt
+log_ocr.txt*
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
 hashes_procesados.txt
 prueba.jpg
 generador.py
 temp_images/
 
 Dockerfile
-*.txt
