@@ -77,15 +77,6 @@ TELEGRAM_SESSION = os.getenv("TELEGRAM_SESSION", str(BASE_DIR / "sesion_frank"))
 TELEGRAM_DESTINO = os.getenv("TELEGRAM_DESTINO", "me")
 TESSERACT_CMD = os.getenv("TESSERACT_CMD", "").strip()
 TESSERACT_LANG = os.getenv("TESSERACT_LANG", "spa").strip() or "spa"
-SCRAPING_ENABLED = os.getenv("SCRAPING_ENABLED", "false").strip().lower() in {
-    "1", "true", "yes", "si", "sí"
-}
-try:
-    SCRAPING_INTERVAL_MINUTES = max(
-        15, int(os.getenv("SCRAPING_INTERVAL_MINUTES", "60"))
-    )
-except ValueError:
-    SCRAPING_INTERVAL_MINUTES = 60
 
 
 def validar_configuracion(requerir_ia=True):

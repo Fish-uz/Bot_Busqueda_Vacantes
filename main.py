@@ -1,10 +1,8 @@
 import asyncio
-from contextlib import suppress
 from client_telegram import conectar_telegram
 from monitor import iniciar_monitor
 from database import inicializar_db
-from config import SCRAPING_ENABLED, logger, validar_configuracion
-from scrapings.runner import bucle_scrapings
+from config import logger, validar_configuracion
 
 # =================================================================
 # FUNCIÓN DE ARRANQUE PRINCIPAL
@@ -22,18 +20,9 @@ async def main():
     
     inicializar_db()
     client = await conectar_telegram()
-    tarea_scrapings = None
     try:
-        if SCRAPING_ENABLED:
-            tarea_scrapings = asyncio.create_task(
-                bucle_scrapings(client), name="scrapings"
-            )
         await iniciar_monitor(client)
     finally:
-        if tarea_scrapings:
-            tarea_scrapings.cancel()
-            with suppress(asyncio.CancelledError):
-                await tarea_scrapings
         if client.is_connected():
             await client.disconnect()
 
